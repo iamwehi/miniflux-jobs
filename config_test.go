@@ -22,7 +22,7 @@ rules:
     content: "#test"
     action: "read"
 `
-	if err := os.WriteFile(configPath, []byte(configContent), 0644); err != nil {
+	if err := os.WriteFile(configPath, []byte(configContent), 0o644); err != nil {
 		t.Fatalf("Failed to write test config: %v", err)
 	}
 
@@ -71,7 +71,7 @@ rules:
   - name: "Test Rule"
     action: "read"
 `
-	if err := os.WriteFile(configPath, []byte(configContent), 0644); err != nil {
+	if err := os.WriteFile(configPath, []byte(configContent), 0o644); err != nil {
 		t.Fatalf("Failed to write test config: %v", err)
 	}
 
@@ -91,7 +91,7 @@ rules:
   - name: "Test Rule"
     action: "invalid"
 `
-	if err := os.WriteFile(configPath, []byte(configContent), 0644); err != nil {
+	if err := os.WriteFile(configPath, []byte(configContent), 0o644); err != nil {
 		t.Fatalf("Failed to write test config: %v", err)
 	}
 
@@ -122,7 +122,7 @@ func TestGetAPIKeyFromFile(t *testing.T) {
 	// Create a temporary key file
 	tmpDir := t.TempDir()
 	keyPath := filepath.Join(tmpDir, "api-key")
-	if err := os.WriteFile(keyPath, []byte("file-api-key\n"), 0644); err != nil {
+	if err := os.WriteFile(keyPath, []byte("file-api-key\n"), 0o644); err != nil {
 		t.Fatalf("Failed to write key file: %v", err)
 	}
 
