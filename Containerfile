@@ -4,11 +4,11 @@ FROM docker.io/golang:latest AS builder
 WORKDIR /app
 
 COPY go.mod go.sum ./
-RUN go mod tidy && go mod download
+RUN go mod download
 
-COPY src/ ./src/
+COPY . .
 
-RUN CGO_ENABLED=0 GOOS=linux go build -ldflags="-w -s" -o miniflux-jobs ./src/
+RUN CGO_ENABLED=0 GOOS=linux go build -ldflags="-w -s" -o miniflux-jobs .
 
 FROM alpine:latest
 
