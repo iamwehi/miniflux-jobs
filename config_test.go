@@ -62,6 +62,8 @@ rules:
 }
 
 func TestLoadConfigMissingURL(t *testing.T) {
+	os.Unsetenv("MINIFLUX_URL")
+
 	tmpDir := t.TempDir()
 	configPath := filepath.Join(tmpDir, "rules.yaml")
 
@@ -78,6 +80,33 @@ rules:
 	_, err := LoadConfig(configPath)
 	if err == nil {
 		t.Error("Expected error for missing miniflux_url")
+	}
+}
+
+func TestLoadConfigURLFromEnv(t *testing.T) {
+	os.Setenv("MINIFLUX_URL", "https://env.example.com")
+	defer os.Unsetenv("MINIFLUX_URL")
+
+	tmpDir := t.TempDir()
+	configPath := filepath.Join(tmpDir, "rules.yaml")
+
+	configContent := `
+interval: 300
+rules:
+  - name: "Test Rule"
+    action: "read"
+`
+	if err := os.WriteFile(configPath, []byte(configContent), 0o644); err != nil {
+		t.Fatalf("Failed to write test config: %v", err)
+	}
+
+	config, err := LoadConfig(configPath)
+	if err != nil {
+		t.Fatalf("Failed to load config: %v", err)
+	}
+
+	if config.MinifluxURL != "https://env.example.com" {
+		t.Errorf("Expected MinifluxURL from env, got '%s'", config.MinifluxURL)
 	}
 }
 

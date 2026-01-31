@@ -37,6 +37,10 @@ func LoadConfig(path string) (*Config, error) {
 		return nil, fmt.Errorf("failed to parse config file: %w", err)
 	}
 
+	if envURL := os.Getenv("MINIFLUX_URL"); envURL != "" {
+		config.MinifluxURL = envURL
+	}
+
 	if err := config.Validate(); err != nil {
 		return nil, fmt.Errorf("invalid config: %w", err)
 	}

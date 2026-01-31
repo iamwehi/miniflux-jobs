@@ -11,7 +11,11 @@ import (
 
 func main() {
 	// Parse command line flags
-	configPath := flag.String("config", "rules.yaml", "Path to the rules configuration file")
+	defaultConfigPath := os.Getenv("MINIFLUX_RULES_FILE")
+	if defaultConfigPath == "" {
+		defaultConfigPath = "rules.yaml"
+	}
+	configPath := flag.String("config", defaultConfigPath, "Path to the rules configuration file")
 	dryRun := flag.Bool("dry-run", false, "Run without making changes (not implemented yet)")
 	flag.Parse()
 
