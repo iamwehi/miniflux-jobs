@@ -12,14 +12,21 @@ type Processor struct {
 	client  MinifluxClient
 	matcher *Matcher
 	logger  *log.Logger
+	dryRun  bool
 }
 
 // NewProcessor creates a new Processor
-func NewProcessor(client MinifluxClient, matcher *Matcher, logger *log.Logger) *Processor {
+func NewProcessor(
+	client MinifluxClient,
+	matcher *Matcher,
+	logger *log.Logger,
+	dryRun bool,
+) *Processor {
 	return &Processor{
 		client:  client,
 		matcher: matcher,
 		logger:  logger,
+		dryRun:  dryRun,
 	}
 }
 
@@ -36,10 +43,12 @@ type ProcessStats struct {
 func (p *Processor) Process() (*ProcessStats, error) {
 	stats := &ProcessStats{}
 
-	// Fetch unread entries
+	// Fetch entries (unread by default, all in dry-run)
 	filter := &miniflux.Filter{
-		Status: miniflux.EntryStatusUnread,
-		Limit:  100, // Process in batches
+		Limit: 100, // Process in batches
+	}
+	if !p.dryRun {
+		filter.Status = miniflux.EntryStatusUnread
 	}
 
 	offset := 0
@@ -97,6 +106,23 @@ func (p *Processor) processEntry(entry *miniflux.Entry, stats *ProcessStats) {
 	default:
 		p.logger.Printf("Unknown action '%s' for rule '%s'", result.Action, result.Rule.Name)
 		stats.Errors++
+		return
+	}
+
+	if p.dryRun {
+		actionVerb := result.Action
+		if result.Action == "read" {
+			actionVerb = "mark read"
+		} else if result.Action == "remove" {
+			actionVerb = "remove"
+		}
+		p.logger.Printf(
+			"Dry run: would %s entry %d [%s] %s",
+			actionVerb,
+			entry.ID,
+			feedTitle,
+			entry.Title,
+		)
 		return
 	}
 

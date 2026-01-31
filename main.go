@@ -16,14 +16,14 @@ func main() {
 		defaultConfigPath = "rules.yaml"
 	}
 	configPath := flag.String("config", defaultConfigPath, "Path to the rules configuration file")
-	dryRun := flag.Bool("dry-run", false, "Run without making changes (not implemented yet)")
+	dryRun := flag.Bool("dry-run", false, "Run without making changes")
 	flag.Parse()
 
 	// Setup logger
 	logger := log.New(os.Stdout, "[miniflux-jobs] ", log.LstdFlags)
 
 	if *dryRun {
-		logger.Println("Warning: dry-run mode is not yet implemented")
+		logger.Println("Dry-run mode enabled: no changes will be applied")
 	}
 
 	// Load configuration
@@ -51,7 +51,7 @@ func main() {
 	}
 
 	// Create processor
-	processor := NewProcessor(client, matcher, logger)
+	processor := NewProcessor(client, matcher, logger, *dryRun)
 
 	// Setup signal handling for graceful shutdown
 	sigChan := make(chan os.Signal, 1)
@@ -110,6 +110,12 @@ func runLoop(processor *Processor, logger *log.Logger, interval int, sigChan cha
 
 // logStats logs the processing statistics
 func logStats(logger *log.Logger, stats *ProcessStats) {
-	logger.Printf("Processing complete: %d entries checked, %d matched, %d marked read, %d removed, %d errors",
-		stats.TotalEntries, stats.MatchedEntries, stats.MarkedRead, stats.Removed, stats.Errors)
+	logger.Printf(
+		"Processing complete: %d entries checked, %d matched, %d marked read, %d removed, %d errors",
+		stats.TotalEntries,
+		stats.MatchedEntries,
+		stats.MarkedRead,
+		stats.Removed,
+		stats.Errors,
+	)
 }

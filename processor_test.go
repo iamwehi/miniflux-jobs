@@ -94,7 +94,7 @@ func TestProcessorMarkRead(t *testing.T) {
 	}
 
 	logger := log.New(os.Stdout, "[test] ", 0)
-	processor := NewProcessor(mockClient, matcher, logger)
+	processor := NewProcessor(mockClient, matcher, logger, false)
 
 	stats, err := processor.Process()
 	if err != nil {
@@ -150,7 +150,7 @@ func TestProcessorRemove(t *testing.T) {
 	}
 
 	logger := log.New(os.Stdout, "[test] ", 0)
-	processor := NewProcessor(mockClient, matcher, logger)
+	processor := NewProcessor(mockClient, matcher, logger, false)
 
 	stats, err := processor.Process()
 	if err != nil {
@@ -163,6 +163,51 @@ func TestProcessorRemove(t *testing.T) {
 
 	if mockClient.updatedStatus != miniflux.EntryStatusRemoved {
 		t.Errorf("Expected status 'removed', got '%s'", mockClient.updatedStatus)
+	}
+}
+
+func TestProcessorDryRun(t *testing.T) {
+	mockClient := &MockClient{
+		entries: []*miniflux.Entry{
+			{
+				ID:      1,
+				Title:   "Sponsored Post",
+				Author:  "Bob",
+				Content: "Buy now!",
+				Feed:    &miniflux.Feed{Title: "Tech News"},
+			},
+		},
+	}
+
+	rules := []Rule{
+		{
+			Name:   "Mark sponsored as read",
+			Title:  "(?i)sponsored",
+			Action: "read",
+		},
+	}
+
+	matcher, err := NewMatcher(rules)
+	if err != nil {
+		t.Fatalf("Failed to create matcher: %v", err)
+	}
+
+	logger := log.New(os.Stdout, "[test] ", 0)
+	processor := NewProcessor(mockClient, matcher, logger, true)
+
+	stats, err := processor.Process()
+	if err != nil {
+		t.Fatalf("Process failed: %v", err)
+	}
+
+	if stats.MatchedEntries != 1 {
+		t.Errorf("Expected 1 matched entry, got %d", stats.MatchedEntries)
+	}
+	if stats.MarkedRead != 1 {
+		t.Errorf("Expected 1 marked read, got %d", stats.MarkedRead)
+	}
+	if len(mockClient.updatedIDs) != 0 {
+		t.Errorf("Expected no updates in dry run, got %v", mockClient.updatedIDs)
 	}
 }
 
@@ -193,7 +238,7 @@ func TestProcessorNoMatches(t *testing.T) {
 	}
 
 	logger := log.New(os.Stdout, "[test] ", 0)
-	processor := NewProcessor(mockClient, matcher, logger)
+	processor := NewProcessor(mockClient, matcher, logger, false)
 
 	stats, err := processor.Process()
 	if err != nil {
@@ -230,7 +275,7 @@ func TestProcessorEmptyEntries(t *testing.T) {
 	}
 
 	logger := log.New(os.Stdout, "[test] ", 0)
-	processor := NewProcessor(mockClient, matcher, logger)
+	processor := NewProcessor(mockClient, matcher, logger, false)
 
 	stats, err := processor.Process()
 	if err != nil {
@@ -288,7 +333,7 @@ func TestProcessorMultipleRules(t *testing.T) {
 	}
 
 	logger := log.New(os.Stdout, "[test] ", 0)
-	processor := NewProcessor(mockClient, matcher, logger)
+	processor := NewProcessor(mockClient, matcher, logger, false)
 
 	stats, err := processor.Process()
 	if err != nil {
@@ -339,7 +384,7 @@ func TestProcessorPagination(t *testing.T) {
 	}
 
 	logger := log.New(os.Stdout, "[test] ", 0)
-	processor := NewProcessor(mockClient, matcher, logger)
+	processor := NewProcessor(mockClient, matcher, logger, false)
 
 	stats, err := processor.Process()
 	if err != nil {
