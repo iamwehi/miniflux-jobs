@@ -2,7 +2,6 @@ package main
 
 import (
 	"regexp"
-	"strings"
 
 	miniflux "miniflux.app/v2/client"
 )
@@ -78,7 +77,7 @@ func (e *RegexError) Error() string {
 type MatchResult struct {
 	Matched bool
 	Rule    *Rule
-	Action  string // normalized action: "read" or "remove"
+	Action  string // normalized action: "read", "remove", or "replace"
 }
 
 // Match checks if an entry matches any rule and returns the first matching rule
@@ -88,7 +87,7 @@ func (m *Matcher) Match(entry *miniflux.Entry) MatchResult {
 			return MatchResult{
 				Matched: true,
 				Rule:    &cr.rule,
-				Action:  strings.ToLower(cr.rule.Action),
+				Action:  cr.rule.normalizedAction(),
 			}
 		}
 	}

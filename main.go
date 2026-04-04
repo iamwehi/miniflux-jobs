@@ -111,11 +111,12 @@ func runLoop(processor *Processor, logger *log.Logger, interval int, sigChan cha
 // logStats logs the processing statistics
 func logStats(logger *log.Logger, stats *ProcessStats) {
 	logger.Printf(
-		"Processing complete: %d entries checked, %d matched, %d marked read, %d removed, %d errors",
+		"Processing complete: %d entries checked, %d matched, %d marked read, %d removed, %d replaced, %d errors",
 		stats.TotalEntries,
 		stats.MatchedEntries,
 		stats.MarkedRead,
 		stats.Removed,
+		stats.Replaced,
 		stats.Errors,
 	)
 }

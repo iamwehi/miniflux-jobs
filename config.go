@@ -10,12 +10,15 @@ import (
 
 // Rule defines a single filtering rule for entries
 type Rule struct {
-	Name    string `yaml:"name"`
-	Feed    string `yaml:"feed"`    // regex pattern for feed title
-	Author  string `yaml:"author"`  // regex pattern for author
-	Title   string `yaml:"title"`   // regex pattern for entry title
-	Content string `yaml:"content"` // regex pattern for entry content
-	Action  string `yaml:"action"`  // "read" or "remove"
+	Name         string `yaml:"name"`
+	Feed         string `yaml:"feed"`          // regex pattern for feed title
+	Author       string `yaml:"author"`        // regex pattern for author
+	Title        string `yaml:"title"`         // regex pattern for entry title
+	Content      string `yaml:"content"`       // regex pattern for entry content
+	Action       string `yaml:"action"`        // "read", "remove", or "replace"
+	ReplaceField string `yaml:"replace_field"` // "title", "content", or "both" (default: "title")
+	ReplaceFrom  string `yaml:"replace_from"`  // substring to replace when action is "replace"
+	ReplaceTo    string `yaml:"replace_to"`    // replacement string when action is "replace"
 }
 
 // Config holds the application configuration
@@ -23,6 +26,29 @@ type Config struct {
 	MinifluxURL string `yaml:"miniflux_url"`
 	Interval    int    `yaml:"interval"` // seconds between runs (0 = run once)
 	Rules       []Rule `yaml:"rules"`
+}
+
+const (
+	actionRead    = "read"
+	actionRemove  = "remove"
+	actionReplace = "replace"
+
+	replaceFieldTitle   = "title"
+	replaceFieldContent = "content"
+	replaceFieldBoth    = "both"
+)
+
+func (r Rule) normalizedAction() string {
+	return strings.ToLower(strings.TrimSpace(r.Action))
+}
+
+func (r Rule) normalizedReplaceField() string {
+	field := strings.ToLower(strings.TrimSpace(r.ReplaceField))
+	if field == "" {
+		return replaceFieldTitle
+	}
+
+	return field
 }
 
 // LoadConfig reads and parses the YAML configuration file
@@ -63,9 +89,31 @@ func (c *Config) Validate() error {
 			return fmt.Errorf("rule %d: name is required", i)
 		}
 
-		action := strings.ToLower(rule.Action)
-		if action != "read" && action != "remove" {
-			return fmt.Errorf("rule %d (%s): action must be 'read' or 'remove'", i, rule.Name)
+		action := rule.normalizedAction()
+		switch action {
+		case actionRead, actionRemove:
+			if rule.ReplaceFrom != "" || rule.ReplaceTo != "" || strings.TrimSpace(rule.ReplaceField) != "" {
+				return fmt.Errorf("rule %d (%s): replace_* fields require action 'replace'", i, rule.Name)
+			}
+
+		case actionReplace:
+			if rule.ReplaceFrom == "" {
+				return fmt.Errorf("rule %d (%s): replace_from is required when action is 'replace'", i, rule.Name)
+			}
+
+			replaceField := rule.normalizedReplaceField()
+			if replaceField != replaceFieldTitle &&
+				replaceField != replaceFieldContent &&
+				replaceField != replaceFieldBoth {
+				return fmt.Errorf(
+					"rule %d (%s): replace_field must be 'title', 'content', or 'both'",
+					i,
+					rule.Name,
+				)
+			}
+
+		default:
+			return fmt.Errorf("rule %d (%s): action must be 'read', 'remove', or 'replace'", i, rule.Name)
 		}
 	}
 

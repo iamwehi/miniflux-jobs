@@ -61,6 +61,42 @@ rules:
 	}
 }
 
+func TestLoadConfigReplaceRule(t *testing.T) {
+	os.Unsetenv("MINIFLUX_URL")
+
+	tmpDir := t.TempDir()
+	configPath := filepath.Join(tmpDir, "rules.yaml")
+
+	configContent := `
+miniflux_url: "https://miniflux.example.com"
+rules:
+  - name: "Normalize title"
+    title: "PR"
+    action: "replace"
+    replace_from: "[PR] "
+    replace_to: ""
+`
+	if err := os.WriteFile(configPath, []byte(configContent), 0o644); err != nil {
+		t.Fatalf("Failed to write test config: %v", err)
+	}
+
+	config, err := LoadConfig(configPath)
+	if err != nil {
+		t.Fatalf("Failed to load config: %v", err)
+	}
+
+	rule := config.Rules[0]
+	if rule.Action != "replace" {
+		t.Errorf("Expected action 'replace', got '%s'", rule.Action)
+	}
+	if rule.ReplaceFrom != "[PR] " {
+		t.Errorf("Expected replace_from '[PR] ', got '%s'", rule.ReplaceFrom)
+	}
+	if rule.normalizedReplaceField() != replaceFieldTitle {
+		t.Errorf("Expected default replace field '%s', got '%s'", replaceFieldTitle, rule.normalizedReplaceField())
+	}
+}
+
 func TestLoadConfigMissingURL(t *testing.T) {
 	os.Unsetenv("MINIFLUX_URL")
 
@@ -127,6 +163,69 @@ rules:
 	_, err := LoadConfig(configPath)
 	if err == nil {
 		t.Error("Expected error for invalid action")
+	}
+}
+
+func TestLoadConfigReplaceRuleMissingFrom(t *testing.T) {
+	tmpDir := t.TempDir()
+	configPath := filepath.Join(tmpDir, "rules.yaml")
+
+	configContent := `
+miniflux_url: "https://miniflux.example.com"
+rules:
+  - name: "Normalize title"
+    action: "replace"
+`
+	if err := os.WriteFile(configPath, []byte(configContent), 0o644); err != nil {
+		t.Fatalf("Failed to write test config: %v", err)
+	}
+
+	_, err := LoadConfig(configPath)
+	if err == nil {
+		t.Error("Expected error for missing replace_from")
+	}
+}
+
+func TestLoadConfigReplaceRuleInvalidField(t *testing.T) {
+	tmpDir := t.TempDir()
+	configPath := filepath.Join(tmpDir, "rules.yaml")
+
+	configContent := `
+miniflux_url: "https://miniflux.example.com"
+rules:
+  - name: "Normalize title"
+    action: "replace"
+    replace_field: "summary"
+    replace_from: "[PR] "
+`
+	if err := os.WriteFile(configPath, []byte(configContent), 0o644); err != nil {
+		t.Fatalf("Failed to write test config: %v", err)
+	}
+
+	_, err := LoadConfig(configPath)
+	if err == nil {
+		t.Error("Expected error for invalid replace_field")
+	}
+}
+
+func TestLoadConfigRejectsReplaceFieldsForReadAction(t *testing.T) {
+	tmpDir := t.TempDir()
+	configPath := filepath.Join(tmpDir, "rules.yaml")
+
+	configContent := `
+miniflux_url: "https://miniflux.example.com"
+rules:
+  - name: "Mark read"
+    action: "read"
+    replace_from: "[PR] "
+`
+	if err := os.WriteFile(configPath, []byte(configContent), 0o644); err != nil {
+		t.Fatalf("Failed to write test config: %v", err)
+	}
+
+	_, err := LoadConfig(configPath)
+	if err == nil {
+		t.Error("Expected error when replace_* fields are used with action 'read'")
 	}
 }
 

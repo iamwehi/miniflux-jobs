@@ -3,6 +3,7 @@ package main
 import (
 	"fmt"
 	"log"
+	"strings"
 
 	miniflux "miniflux.app/v2/client"
 )
@@ -36,6 +37,7 @@ type ProcessStats struct {
 	MatchedEntries int
 	MarkedRead     int
 	Removed        int
+	Replaced       int
 	Errors         int
 }
 
@@ -97,12 +99,15 @@ func (p *Processor) processEntry(entry *miniflux.Entry, stats *ProcessStats) {
 
 	var status string
 	switch result.Action {
-	case "read":
+	case actionRead:
 		status = miniflux.EntryStatusRead
 		stats.MarkedRead++
-	case "remove":
+	case actionRemove:
 		status = miniflux.EntryStatusRemoved
 		stats.Removed++
+	case actionReplace:
+		p.replaceEntryText(entry, feedTitle, result.Rule, stats)
+		return
 	default:
 		p.logger.Printf("Unknown action '%s' for rule '%s'", result.Action, result.Rule.Name)
 		stats.Errors++
@@ -111,9 +116,9 @@ func (p *Processor) processEntry(entry *miniflux.Entry, stats *ProcessStats) {
 
 	if p.dryRun {
 		actionVerb := result.Action
-		if result.Action == "read" {
+		if result.Action == actionRead {
 			actionVerb = "mark read"
-		} else if result.Action == "remove" {
+		} else if result.Action == actionRemove {
 			actionVerb = "remove"
 		}
 		p.logger.Printf(
@@ -133,4 +138,81 @@ func (p *Processor) processEntry(entry *miniflux.Entry, stats *ProcessStats) {
 	}
 
 	p.logger.Printf("Applied action '%s' to entry %d", result.Action, entry.ID)
+}
+
+func (p *Processor) replaceEntryText(
+	entry *miniflux.Entry,
+	feedTitle string,
+	rule *Rule,
+	stats *ProcessStats,
+) {
+	entryChanges, changedFields := buildEntryReplacement(entry, rule)
+	if len(changedFields) == 0 {
+		p.logger.Printf(
+			"Rule '%s' matched entry %d but no replaceable text was found in %s",
+			rule.Name,
+			entry.ID,
+			rule.normalizedReplaceField(),
+		)
+		return
+	}
+
+	stats.Replaced++
+
+	if p.dryRun {
+		p.logger.Printf(
+			"Dry run: would replace substring %q with %q in %s for entry %d [%s] %s",
+			rule.ReplaceFrom,
+			rule.ReplaceTo,
+			strings.Join(changedFields, ", "),
+			entry.ID,
+			feedTitle,
+			entry.Title,
+		)
+		return
+	}
+
+	if _, err := p.client.UpdateEntry(entry.ID, entryChanges); err != nil {
+		p.logger.Printf("Failed to replace text for entry %d: %v", entry.ID, err)
+		stats.Errors++
+		return
+	}
+
+	p.logger.Printf(
+		"Applied action '%s' to entry %d (%s)",
+		actionReplace,
+		entry.ID,
+		strings.Join(changedFields, ", "),
+	)
+}
+
+func buildEntryReplacement(
+	entry *miniflux.Entry,
+	rule *Rule,
+) (*miniflux.EntryModificationRequest, []string) {
+	entryChanges := &miniflux.EntryModificationRequest{}
+	changedFields := make([]string, 0, 2)
+	replaceField := rule.normalizedReplaceField()
+
+	if replaceField == replaceFieldTitle || replaceField == replaceFieldBoth {
+		updatedTitle := strings.ReplaceAll(entry.Title, rule.ReplaceFrom, rule.ReplaceTo)
+		if updatedTitle != entry.Title {
+			entryChanges.Title = &updatedTitle
+			changedFields = append(changedFields, replaceFieldTitle)
+		}
+	}
+
+	if replaceField == replaceFieldContent || replaceField == replaceFieldBoth {
+		updatedContent := strings.ReplaceAll(entry.Content, rule.ReplaceFrom, rule.ReplaceTo)
+		if updatedContent != entry.Content {
+			entryChanges.Content = &updatedContent
+			changedFields = append(changedFields, replaceFieldContent)
+		}
+	}
+
+	if len(changedFields) == 0 {
+		return nil, nil
+	}
+
+	return entryChanges, changedFields
 }

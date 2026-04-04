@@ -9,6 +9,7 @@ import (
 type MinifluxClient interface {
 	Entries(filter *miniflux.Filter) (*miniflux.EntryResultSet, error)
 	UpdateEntries(entryIDs []int64, status string) error
+	UpdateEntry(entryID int64, entryChanges *miniflux.EntryModificationRequest) (*miniflux.Entry, error)
 	Feeds() (miniflux.Feeds, error)
 }
 
@@ -31,6 +32,14 @@ func (c *ClientWrapper) Entries(filter *miniflux.Filter) (*miniflux.EntryResultS
 // UpdateEntries updates the status of the given entries
 func (c *ClientWrapper) UpdateEntries(entryIDs []int64, status string) error {
 	return c.client.UpdateEntries(entryIDs, status)
+}
+
+// UpdateEntry updates the title and/or content of a single entry
+func (c *ClientWrapper) UpdateEntry(
+	entryID int64,
+	entryChanges *miniflux.EntryModificationRequest,
+) (*miniflux.Entry, error) {
+	return c.client.UpdateEntry(entryID, entryChanges)
 }
 
 // Feeds fetches all feeds from Miniflux

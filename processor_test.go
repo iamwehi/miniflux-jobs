@@ -9,14 +9,22 @@ import (
 )
 
 // MockClient implements MinifluxClient for testing
+type entryUpdateCall struct {
+	entryID int64
+	title   *string
+	content *string
+}
+
 type MockClient struct {
-	entries       []*miniflux.Entry
-	updatedIDs    []int64
-	updatedStatus string
-	feeds         miniflux.Feeds
-	entriesErr    error
-	updateErr     error
-	feedsErr      error
+	entries           []*miniflux.Entry
+	updatedIDs        []int64
+	updatedStatus     string
+	updatedEntryCalls []entryUpdateCall
+	feeds             miniflux.Feeds
+	entriesErr        error
+	updateErr         error
+	updateEntryErr    error
+	feedsErr          error
 }
 
 func (m *MockClient) Entries(filter *miniflux.Filter) (*miniflux.EntryResultSet, error) {
@@ -51,6 +59,35 @@ func (m *MockClient) UpdateEntries(entryIDs []int64, status string) error {
 	m.updatedIDs = append(m.updatedIDs, entryIDs...)
 	m.updatedStatus = status
 	return nil
+}
+
+func (m *MockClient) UpdateEntry(
+	entryID int64,
+	entryChanges *miniflux.EntryModificationRequest,
+) (*miniflux.Entry, error) {
+	if m.updateEntryErr != nil {
+		return nil, m.updateEntryErr
+	}
+
+	call := entryUpdateCall{entryID: entryID}
+	updatedEntry := &miniflux.Entry{ID: entryID}
+
+	if entryChanges != nil {
+		if entryChanges.Title != nil {
+			title := *entryChanges.Title
+			call.title = &title
+			updatedEntry.Title = title
+		}
+
+		if entryChanges.Content != nil {
+			content := *entryChanges.Content
+			call.content = &content
+			updatedEntry.Content = content
+		}
+	}
+
+	m.updatedEntryCalls = append(m.updatedEntryCalls, call)
+	return updatedEntry, nil
 }
 
 func (m *MockClient) Feeds() (miniflux.Feeds, error) {
@@ -208,6 +245,161 @@ func TestProcessorDryRun(t *testing.T) {
 	}
 	if len(mockClient.updatedIDs) != 0 {
 		t.Errorf("Expected no updates in dry run, got %v", mockClient.updatedIDs)
+	}
+}
+
+func TestProcessorReplaceTitle(t *testing.T) {
+	mockClient := &MockClient{
+		entries: []*miniflux.Entry{
+			{
+				ID:      1,
+				Title:   "[Sponsored] Post",
+				Author:  "Bob",
+				Content: "Normal content",
+				Feed:    &miniflux.Feed{Title: "Tech News"},
+			},
+		},
+	}
+
+	rules := []Rule{
+		{
+			Name:        "Normalize title",
+			Title:       `\[Sponsored\]`,
+			Action:      "replace",
+			ReplaceFrom: "[Sponsored] ",
+			ReplaceTo:   "",
+		},
+	}
+
+	matcher, err := NewMatcher(rules)
+	if err != nil {
+		t.Fatalf("Failed to create matcher: %v", err)
+	}
+
+	logger := log.New(os.Stdout, "[test] ", 0)
+	processor := NewProcessor(mockClient, matcher, logger, false)
+
+	stats, err := processor.Process()
+	if err != nil {
+		t.Fatalf("Process failed: %v", err)
+	}
+
+	if stats.Replaced != 1 {
+		t.Errorf("Expected 1 replaced entry, got %d", stats.Replaced)
+	}
+	if len(mockClient.updatedEntryCalls) != 1 {
+		t.Fatalf("Expected 1 text update, got %d", len(mockClient.updatedEntryCalls))
+	}
+
+	call := mockClient.updatedEntryCalls[0]
+	if call.entryID != 1 {
+		t.Errorf("Expected entry 1 to be updated, got %d", call.entryID)
+	}
+	if call.title == nil || *call.title != "Post" {
+		t.Errorf("Expected updated title 'Post', got %v", call.title)
+	}
+	if call.content != nil {
+		t.Errorf("Expected content to remain unchanged, got %v", call.content)
+	}
+	if len(mockClient.updatedIDs) != 0 {
+		t.Errorf("Expected no status updates, got %v", mockClient.updatedIDs)
+	}
+}
+
+func TestProcessorReplaceDryRun(t *testing.T) {
+	mockClient := &MockClient{
+		entries: []*miniflux.Entry{
+			{
+				ID:      1,
+				Title:   "[Sponsored] Post",
+				Author:  "Bob",
+				Content: "Normal content",
+				Feed:    &miniflux.Feed{Title: "Tech News"},
+			},
+		},
+	}
+
+	rules := []Rule{
+		{
+			Name:        "Normalize title",
+			Title:       `\[Sponsored\]`,
+			Action:      "replace",
+			ReplaceFrom: "[Sponsored] ",
+			ReplaceTo:   "",
+		},
+	}
+
+	matcher, err := NewMatcher(rules)
+	if err != nil {
+		t.Fatalf("Failed to create matcher: %v", err)
+	}
+
+	logger := log.New(os.Stdout, "[test] ", 0)
+	processor := NewProcessor(mockClient, matcher, logger, true)
+
+	stats, err := processor.Process()
+	if err != nil {
+		t.Fatalf("Process failed: %v", err)
+	}
+
+	if stats.Replaced != 1 {
+		t.Errorf("Expected 1 replaced entry in dry run, got %d", stats.Replaced)
+	}
+	if len(mockClient.updatedEntryCalls) != 0 {
+		t.Errorf("Expected no text updates in dry run, got %v", mockClient.updatedEntryCalls)
+	}
+}
+
+func TestProcessorReplaceBothFields(t *testing.T) {
+	mockClient := &MockClient{
+		entries: []*miniflux.Entry{
+			{
+				ID:      1,
+				Title:   "News [PR] Update",
+				Author:  "Bob",
+				Content: "<p>[PR] Content</p>",
+				Feed:    &miniflux.Feed{Title: "Tech News"},
+			},
+		},
+	}
+
+	rules := []Rule{
+		{
+			Name:         "Clean PR markers",
+			Author:       "Bob",
+			Action:       "replace",
+			ReplaceField: "both",
+			ReplaceFrom:  "[PR] ",
+			ReplaceTo:    "",
+		},
+	}
+
+	matcher, err := NewMatcher(rules)
+	if err != nil {
+		t.Fatalf("Failed to create matcher: %v", err)
+	}
+
+	logger := log.New(os.Stdout, "[test] ", 0)
+	processor := NewProcessor(mockClient, matcher, logger, false)
+
+	stats, err := processor.Process()
+	if err != nil {
+		t.Fatalf("Process failed: %v", err)
+	}
+
+	if stats.Replaced != 1 {
+		t.Errorf("Expected 1 replaced entry, got %d", stats.Replaced)
+	}
+	if len(mockClient.updatedEntryCalls) != 1 {
+		t.Fatalf("Expected 1 text update, got %d", len(mockClient.updatedEntryCalls))
+	}
+
+	call := mockClient.updatedEntryCalls[0]
+	if call.title == nil || *call.title != "News Update" {
+		t.Errorf("Expected updated title 'News Update', got %v", call.title)
+	}
+	if call.content == nil || *call.content != "<p>Content</p>" {
+		t.Errorf("Expected updated content '<p>Content</p>', got %v", call.content)
 	}
 }
 
